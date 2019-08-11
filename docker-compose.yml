@@ -1,0 +1,14 @@
+version: '3.7'
+services:
+  currency:
+    build: .
+    image: silentsnowman/currency-service:${TAG}
+    secrets:
+      - free_currconv_api_key
+    environment:
+      - FREE_CURRCONV_API_KEY_FILE=/run/secrets/free_currconv_api_key
+    ports:
+      - "${PORT}:80"
+secrets:
+   free_currconv_api_key:
+     file: free_currconv_api_key.txt
