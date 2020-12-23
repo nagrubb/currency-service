@@ -1,10 +1,9 @@
-FROM golang:latest 
+FROM golang:1.15.6 
 MAINTAINER Nathan Grubb "me@nathangrubb.io"
 
 RUN mkdir /service
-RUN go get github.com/gorilla/mux
 
-ADD . /service/ 
+ADD . /service/
 WORKDIR /service
 RUN go build -o main .
 
