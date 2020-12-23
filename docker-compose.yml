@@ -9,6 +9,8 @@ services:
       - free_currconv_api_key
     environment:
       - FREE_CURRCONV_API_KEY_FILE=/run/secrets/free_currconv_api_key
+      - REDIS_SERVER_AND_PORT=redis:6379
+      - REDIS_CACHE_DURATION_IN_MINUTES=1
     ports:
       - "${PORT}:80"
   redis:

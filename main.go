@@ -12,7 +12,9 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
+	"time"
 )
 
 type FreeCurrConvErrorResponse struct {
@@ -32,12 +34,16 @@ type ErrorResponse struct {
 
 type RestService struct {
 	FreeCurrConvApiKey string
+	RedisServer        string
+	RedisCacheDuration time.Duration
 }
 
 var service *RestService
 
 func main() {
 	apiKeyFilename := os.Getenv("FREE_CURRCONV_API_KEY_FILE")
+	redisServerAndPort := os.Getenv("REDIS_SERVER_AND_PORT")
+	redisCacheDurationInMinutes := os.Getenv("REDIS_CACHE_DURATION_IN_MINUTES")
 	apiKeyFile, err := os.Open(apiKeyFilename)
 	defer apiKeyFile.Close()
 
@@ -57,22 +63,21 @@ func main() {
 		panic("API key is longer than expected")
 	}
 
-	var ctx = context.Background()
+	minutes, err := strconv.ParseUint(redisCacheDurationInMinutes, 10, 32)
 
-	rdb := redis.NewClient(&redis.Options{
-		Addr:     "redis:6379",
-		Password: "", // no password set
-		DB:       0,  // use default DB
-	})
-
-	err = rdb.Set(ctx, "key", "value", 0).Err()
 	if err != nil {
 		fmt.Println(err)
+		fmt.Println("Defaulting to caching for 15 minutes in Redis")
+		minutes = 15
 	}
 
 	service = &RestService{
 		FreeCurrConvApiKey: string(apiKey),
+		RedisServer:        redisServerAndPort,
+		RedisCacheDuration: time.Duration(minutes) * time.Minute,
 	}
+
+	fmt.Printf("%+v\n", service)
 	service.startService()
 }
 
@@ -90,6 +95,23 @@ func GetCurrency(responseWriter http.ResponseWriter, requestReader *http.Request
 	toCurrency := strings.ToUpper(params["to"])
 	currencyQuery := fmt.Sprintf("%s_%s", fromCurrency, toCurrency)
 
+	cachedValue, err := getCachedCurrencyValue(currencyQuery)
+	if err == nil {
+		fmt.Printf("Api=GetCurrency Action=UsingRedisCache Query=%s\n", currencyQuery)
+		rate := &ExchangeRate{
+			From: fromCurrency,
+			To:   toCurrency,
+			Rate: cachedValue,
+		}
+
+		if err := writeJson(responseWriter, rate); err != nil {
+			responseWriter.WriteHeader(http.StatusInternalServerError)
+			fmt.Println(err)
+		}
+		return
+	}
+
+	fmt.Printf("Api=GetCurrency Action=UsingCurrConv Query=%s\n", currencyQuery)
 	url := url.URL{
 		Scheme: "https",
 		Host:   "free.currconv.com",
@@ -147,13 +169,19 @@ func GetCurrency(responseWriter http.ResponseWriter, requestReader *http.Request
 		return
 	}
 
-	rate := &ExchangeRate{
-		From: fromCurrency,
-		To:   toCurrency,
-		Rate: result[currencyQuery],
+	var rate float64 = result[currencyQuery]
+
+	if err := setCachedCurrencyValue(currencyQuery, rate); err != nil {
+		fmt.Println(err)
 	}
 
-	if err := writeJson(responseWriter, rate); err != nil {
+	rateResponse := &ExchangeRate{
+		From: fromCurrency,
+		To:   toCurrency,
+		Rate: rate,
+	}
+
+	if err := writeJson(responseWriter, rateResponse); err != nil {
 		responseWriter.WriteHeader(http.StatusInternalServerError)
 		fmt.Println(err)
 	}
@@ -182,4 +210,25 @@ func writeJson(responseWriter http.ResponseWriter, data interface{}) error {
 	}
 
 	return nil
+}
+
+func getCachedCurrencyValue(key string) (float64, error) {
+	stringValue, err := getRedisServer().Get(context.Background(), key).Result()
+
+	if err != nil {
+		return 0, err
+	}
+
+	return strconv.ParseFloat(stringValue, 64)
+}
+
+func setCachedCurrencyValue(key string, value float64) error {
+	_, err := getRedisServer().Set(context.Background(), key, value, service.RedisCacheDuration).Result()
+	return err
+}
+
+func getRedisServer() *redis.Client {
+	return redis.NewClient(&redis.Options{
+		Addr: service.RedisServer,
+	})
 }
