@@ -16,8 +16,8 @@ import (
 )
 
 type FreeCurrConvErrorResponse struct {
-  Status int `json:"status"`
-  Error string `json:"error"`
+	Status int    `json:"status"`
+	Error  string `json:"error"`
 }
 
 type ExchangeRate struct {
@@ -27,7 +27,7 @@ type ExchangeRate struct {
 }
 
 type ErrorResponse struct {
-  Error string
+	Error string
 }
 
 type RestService struct {
@@ -57,18 +57,18 @@ func main() {
 		panic("API key is longer than expected")
 	}
 
-  var ctx = context.Background()
+	var ctx = context.Background()
 
-  rdb := redis.NewClient(&redis.Options{
-      Addr:     "redis:6379",
-      Password: "", // no password set
-      DB:       0,  // use default DB
-  })
+	rdb := redis.NewClient(&redis.Options{
+		Addr:     "redis:6379",
+		Password: "", // no password set
+		DB:       0,  // use default DB
+	})
 
-  err = rdb.Set(ctx, "key", "value", 0).Err()
-  if err != nil {
-    fmt.Println(err)
-  }
+	err = rdb.Set(ctx, "key", "value", 0).Err()
+	if err != nil {
+		fmt.Println(err)
+	}
 
 	service = &RestService{
 		FreeCurrConvApiKey: string(apiKey),
@@ -118,22 +118,22 @@ func GetCurrency(responseWriter http.ResponseWriter, requestReader *http.Request
 		return
 	}
 
-  //API returns either
-  //200: {"<from_currency>_<to_currency>":<rate>}
-  //400: {"status":<status_code>,"error":"error_message"}
-  if rsp.StatusCode != http.StatusOK {
-    var errorResponse FreeCurrConvErrorResponse
+	//API returns either
+	//200: {"<from_currency>_<to_currency>":<rate>}
+	//400: {"status":<status_code>,"error":"error_message"}
+	if rsp.StatusCode != http.StatusOK {
+		var errorResponse FreeCurrConvErrorResponse
 
-    if err = json.Unmarshal(rspBody, &errorResponse); err != nil {
-      //Unknown response format
-  		writeError(responseWriter, err.Error())
-  		fmt.Println(strings.TrimSuffix(string(rspBody), "\n"))
-  		return
-  	}
+		if err = json.Unmarshal(rspBody, &errorResponse); err != nil {
+			//Unknown response format
+			writeError(responseWriter, err.Error())
+			fmt.Println(strings.TrimSuffix(string(rspBody), "\n"))
+			return
+		}
 
-    writeError(responseWriter, errorResponse.Error)
-    return
-  }
+		writeError(responseWriter, errorResponse.Error)
+		return
+	}
 
 	var result map[string]float64
 	if err = json.Unmarshal(rspBody, &result); err != nil {
@@ -143,7 +143,7 @@ func GetCurrency(responseWriter http.ResponseWriter, requestReader *http.Request
 	}
 
 	if _, ok := result[currencyQuery]; !ok {
-    writeError(responseWriter, fmt.Sprintf("%s not present in JSON result object", currencyQuery))
+		writeError(responseWriter, fmt.Sprintf("%s not present in JSON result object", currencyQuery))
 		return
 	}
 
@@ -153,33 +153,33 @@ func GetCurrency(responseWriter http.ResponseWriter, requestReader *http.Request
 		Rate: result[currencyQuery],
 	}
 
-  if err := writeJson(responseWriter, rate); err != nil {
-    responseWriter.WriteHeader(http.StatusInternalServerError)
-    fmt.Println(err)
-  }
+	if err := writeJson(responseWriter, rate); err != nil {
+		responseWriter.WriteHeader(http.StatusInternalServerError)
+		fmt.Println(err)
+	}
 }
 
 func writeError(responseWriter http.ResponseWriter, errorString string) {
 	responseWriter.WriteHeader(http.StatusInternalServerError)
 
-  error := &ErrorResponse {
-    Error: errorString,
-  }
+	error := &ErrorResponse{
+		Error: errorString,
+	}
 
-  if err := writeJson(responseWriter, error); err != nil {
-    fmt.Println(err)
-  }
+	if err := writeJson(responseWriter, error); err != nil {
+		fmt.Println(err)
+	}
 }
 
 func writeJson(responseWriter http.ResponseWriter, data interface{}) error {
-  jsonData, err := json.Marshal(data)
+	jsonData, err := json.Marshal(data)
 	if err != nil {
-    return err
+		return err
 	}
 
 	if _, err = responseWriter.Write(jsonData); err != nil {
-    return err
+		return err
 	}
 
-  return nil
+	return nil
 }
