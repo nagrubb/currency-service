@@ -1,14 +1,20 @@
 version: '3.7'
 services:
   currency:
+    depends_on:
+      - redis
     build: .
     image: silentsnowman/currency-service:${TAG}
     secrets:
       - free_currconv_api_key
     environment:
       - FREE_CURRCONV_API_KEY_FILE=/run/secrets/free_currconv_api_key
+      - REDIS_SERVER_AND_PORT=redis:6379
+      - REDIS_CACHE_DURATION_IN_MINUTES=1
     ports:
       - "${PORT}:80"
+  redis:
+    image: redis:6.0.9
 secrets:
    free_currconv_api_key:
      file: free_currconv_api_key.txt
